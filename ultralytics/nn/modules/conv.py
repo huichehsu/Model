@@ -177,7 +177,7 @@ class SDP(nn.Module):
         
         # 將上層特徵圖上採樣至與 c 相同的空間尺寸
         p_upper_upsampled = F.interpolate(p_upper, size=(H, W), mode='bilinear', align_corners=False)
-        self.show_feature(p_upper_upsampled, "Fd")
+        # self.show_feature(p_upper_upsampled, "Fd")
        
         
         # 分別通過 1x1 卷積生成 Q、K、V
@@ -223,7 +223,7 @@ class SDP(nn.Module):
         
         # 將學習到的空間依賴特徵與原始下層特徵相加（殘差連接）
         out = p_upper_upsampled + out
-        self.show_feature(out, "align_Fd")
+        # self.show_feature(out, "align_Fd")
         # out[out < out.mean()*1.3] = 0
         
         
@@ -231,9 +231,9 @@ class SDP(nn.Module):
         gs = self.sigmoid(self.DWconv(out))
         ram = 1 - gs
         pss = c * ram 
-        self.show_feature(gs, "align_gs")
-        self.show_feature(ram, name="align_raw")
-        self.show_feature(pss, name="align_tdsa")
+        # self.show_feature(gs, "align_gs")
+        # self.show_feature(ram, name="align_raw")
+        # self.show_feature(pss, name="align_tdsa")
 
         p_upper_upsampled_conv = self.sigmoid(self.DWconv(p_upper_upsampled))
         new = 1 - p_upper_upsampled_conv
@@ -242,10 +242,10 @@ class SDP(nn.Module):
         # new[new > new.mean() ] = 1
         result = c * new
 
-        self.show_feature(p_upper_upsampled_conv, "gs")
-        self.show_feature(new, name="raw")
-        self.show_feature(c, name="Fs")
-        self.show_feature(result, name='tdsa')
+        # self.show_feature(p_upper_upsampled_conv, "gs")
+        # self.show_feature(new, name="raw")
+        # self.show_feature(c, name="Fs")
+        # self.show_feature(result, name='tdsa')
 
 
 
@@ -2654,12 +2654,13 @@ class Ehance_suppress(nn.Module):
         feature_map = np.sum(feature_map, axis=0, keepdims=True)[0]
         norm_img = cv2.normalize(feature_map, None, 0, 255, cv2.NORM_MINMAX)
         norm_img = norm_img.astype(np.uint8)
-        # cv2.imshow(name, norm_img)
+        cv2.imshow(name, norm_img)
         cv2.imwrite(f"feature_map/{name}.png", norm_img)
-        # cv2.waitKey(0)
+        cv2.waitKey(0)
     
     def forward(self, x):
         x_large = self.relu(self.conv_7x7(x))
+        # self.show_feature(x, "ori_feature")
         # x_small = self.relu(self.conv_3x3(x))
 
         # weight_small = self.sigmoid(x_small)
@@ -2700,9 +2701,6 @@ class Mask(nn.Module):
         # self.gate = gate
         self.relu = nn.ReLU(inplace=True)
 
-
-        self.conv_7x7 = Conv(in_channels, in_channels, k=7, p=3, g=in_channels)
-        # self.conv_3x3 = Conv(in_channels, in_channels, k=3, p=1, g=in_channels)
 
         ratio = 16
         self.avg_pool = nn.AdaptiveAvgPool2d(1)
@@ -2946,8 +2944,7 @@ class FourierFPU(nn.Module):
         x1, x2, x3, x4 = torch.split(x, channels_per_group, 1)
         x_out = torch.cat([self.fft1(x1), self.fft2(x2), self.fft3(x3), self.fft4(x4)], dim=1)
         x_out = self.fc(x_out)
-        if x.shape[1] == x_out.shape[1]:
-            x_out = x_out + x
+        x_out = x_out + x
         return x_out
 
 
@@ -2956,15 +2953,14 @@ class SPU_local(nn.Module):
         super().__init__()
         self.c1 = Conv(in_channels // 2, in_channels // 2, (1, 3), g= in_channels // 2, p=(0, 1))
         self.c2 = Conv(in_channels // 2, in_channels // 2, (3, 1), g= in_channels // 2, p=(1, 0))
-        self.c3 = Conv(in_channels, out_channels, 1)
+        self.c3 = Conv(in_channels, in_channels, 1)
     def forward(self, x):
         x1, x2 = torch.split(x, x.shape[1] // 2, dim=1)
         x1 = self.c1(x1)
         x2 = self.c2(x2 + x1)
         x_out = torch.cat([x1, x2], dim=1)
-        x_out = self.c3(x_out)
-        if x.shape[1] == x_out.shape[1]:
-            x_out = x_out + x
+        x_out = self.c3(x_out) + x
+
         return x_out
 
 
@@ -2973,16 +2969,14 @@ class SPU_global(nn.Module):
         super().__init__()
         self.c1 = Conv(in_channels // 2, in_channels // 2, 3, d=2, g= in_channels // 2, p=2)
         self.c2 = Conv(in_channels // 2, in_channels // 2, 5, g= in_channels // 2)
-        self.c3 = Conv(in_channels, out_channels, 1)
+        self.c3 = Conv(in_channels, in_channels, 1)
 
     def forward(self, x):
         x1, x2 = torch.split(x, x.shape[1] // 2, dim=1)
         x1 = self.c1(x1)
         x2 = self.c2(x2 + x1)
         x_out = torch.cat([x1, x2], dim=1)
-        x_out = self.c3(x_out)
-        if x.shape[1] == x_out.shape[1]:
-            x_out = x_out + x
+        x_out = self.c3(x_out) + x
         return x_out
 
 
@@ -2996,17 +2990,20 @@ class SFS_Conv(nn.Module):
         self.SPU_local = SPU_local(in_channels // 2, out_channels)
 
 
-        self.PWC_o = Conv(out_channels, out_channels, 1)
+        self.PWC_o = Conv(out_channels // 2, out_channels, 1)
         self.advavg = nn.AdaptiveAvgPool2d(1)
 
     def forward(self, x):
+        # print("x in SFS_Conv:", x.shape)
         x_spa_1 = self.SPU_global(self.PWC0(x))
         x_spa_2 = self.SPU_local(self.PWC1(x))
         out = torch.cat([x_spa_1, x_spa_2], dim=1)
         out = F.softmax(self.advavg(out), dim=1) * out
         out1, out2 = torch.split(out, out.size(1) // 2, dim=1)
+        output = self.PWC_o(out1 + out2)
 
-        return self.PWC_o(out1 + out2)
+
+        return output
 
 class GroupBatchnorm2d(nn.Module):
     def __init__(self, c_num:int, 
